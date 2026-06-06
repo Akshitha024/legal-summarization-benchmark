@@ -1,5 +1,5 @@
 ---
-title: "legal-summarization-benchmark: Multi-metric legal summarization evaluator (ROUGE + BERTScore + FActScore + length)"
+title: "legal-summarization-benchmark: multi-metric evaluation of legal-text summarization"
 author: "Akshitha Reddy Lingampally"
 date: "2026-06-06"
 geometry: margin=1in
@@ -8,198 +8,180 @@ fontsize: 11pt
 
 # Abstract
 
-Multi-metric legal summarization evaluator (ROUGE + BERTScore + FActScore + length)
-
-This report presents the methodology, dataset, evaluation results, and analysis
-of the legal-summarization-benchmark project. We describe the design choices, baseline
-comparisons, and the key empirical findings that distinguish this approach from
-prior work. All code, data preparation scripts, and figures are reproducible from
-the open-source repository.
+We present `legal-summarization-benchmark`, a multi-metric harness for
+evaluating legal-text summarization that combines ROUGE-1/2/L,
+BERTScore, a sentence-level FActScore proxy, and explicit length /
+compression metrics. The combination targets the failure modes that
+ROUGE-alone misses: a model that copy-pastes the bill's introduction
+will score high on ROUGE but flunk FActScore + length ratio. We run a
+6-bill BillSum-mini fixture (4 clean candidates, 2 intentionally bad)
+and report ROUGE-1 = 0.504, ROUGE-L = 0.437, FActScore = 0.833 — with
+the strip plot correctly isolating the two bad candidates that bring
+the mean down.
 
 # 1. Background
 
-The problem this project addresses is part of a broader research direction in
-applied machine learning. Below we situate the work in the context of recent
-literature and identify the specific gap this project tries to close.
+Legal summarization (BillSum: Kornilova & Eidelman, 2019) is unusual
+because the input is structured, formal, and often heavy on verbatim
+section headers and statutory references. Standard summarization
+metrics over-reward extractive verbatim copying: a "summary" that
+copies the bill's introduction wholesale will score high on ROUGE and
+BERTScore because both reward overlap, lexical or semantic, with the
+reference. A serious evaluator therefore combines those with
+something that penalizes wholesale copying.
 
-## 1.1 Motivation
-
-Multi-metric legal summarization evaluator (ROUGE + BERTScore + FActScore + length) The remainder of this section motivates the choice of approach.
-
-## 1.2 Scope
-
-This report covers:
-
-- The dataset and its provenance
-- The methodology and design choices
-- Quantitative results on held-out evaluation
-- Ablation studies on the key hyperparameters
-- Limitations and recommended next steps
+This project ships exactly that combination: ROUGE for n-gram overlap,
+BERTScore for semantic overlap, FActScore for atomic-fact factuality
+against the source, and length / compression metrics to catch the
+verbatim-copy failure mode.
 
 # 2. Related Work
 
-Several lines of work bear directly on this project:
+**BillSum.** Kornilova & Eidelman (2019) introduced the BillSum
+corpus of U.S. Congressional bills + human reference summaries.
 
-1. **Foundation methods.** The seminal papers in this area established the
-   core algorithms and evaluation protocols we reuse.
-2. **Recent extensions.** More recent work has explored variants that address
-   specific shortcomings of the foundation methods.
-3. **Production deployments.** Several open-source implementations exist in
-   the wild; we cite the most relevant ones in the References section.
+**ROUGE.** Lin (2004) is the standard. We use the rouge-score
+implementation with stemming.
 
-A complete reference list is in Section 11.
+**BERTScore.** Zhang et al. (2020). We use DistilBERT as backbone
+by default for laptop-friendliness; production should use
+DeBERTa-xlarge-MNLI per the paper.
+
+**FActScore.** Min et al. (2023) is the gold standard for atomic-fact
+factual precision; our heuristic variant (sentence-level + token
+overlap against source) is a fast approximation.
 
 # 3. Method
 
-This section describes the technical approach.
+## 3.1 Metric set
 
-## 3.1 Overall Architecture
+| metric                 | what it catches                                     | cost          |
+|------------------------|-----------------------------------------------------|---------------|
+| ROUGE-1 / 2 / L F1     | lexical overlap with reference                      | free          |
+| BERTScore F1           | paraphrased semantic overlap                        | model load    |
+| FActScore (heuristic)  | sentence-level factual precision against source     | free          |
+| compression_vs_source  | "summary" being mostly verbatim                     | free          |
+| length_ratio_vs_ref    | over- and under-summarization                       | free          |
 
-The system follows a standard pipeline: input ingestion, transformation,
-inference (or retrieval), and evaluation. The architecture diagram below
-shows the per-stage breakdown.
+## 3.2 FActScore-heuristic
 
-![Architecture](../../results/figures/architecture.png){width=80%}
+For each summary:
 
-## 3.2 Component-Level Design
+1. Split into sentences (regex-based; no nltk dependency).
+2. For each sentence, compute Jaccard overlap of unique tokens
+   (≥ 3 chars, lowercased) with the source.
+3. Sentence is "supported" if coverage ≥ 0.3.
+4. FActScore-p = supported / total sentences.
 
-Each component has a single well-defined responsibility. We describe each
-in turn.
+This is a fast precision approximation; the LLM-judged FActScore from
+Min et al. (2023) is more accurate but expensive.
 
-### 3.2.1 Data Loader
+## 3.3 Length metrics
 
-The data loader normalizes the input format and exposes a uniform interface
-to downstream components. It supports both the canonical benchmark format
-and a synthetic fixture for CI.
-
-### 3.2.2 Core Processing
-
-The core component implements the main algorithm. Implementation details are
-in `src/`; the per-function docstrings describe inputs, outputs, and complexity.
-
-### 3.2.3 Evaluation
-
-The evaluator computes the metrics described in Section 5 and writes results
-to `results/` for downstream visualization.
-
-## 3.3 Configuration
-
-All hyperparameters are surfaced through the CLI and `pyproject.toml`.
-Defaults are chosen to be safe on a CPU-only laptop; faster machines can
-increase batch sizes and run sizes.
+- `cand_tokens`, `ref_tokens`, `source_tokens`: token counts via
+  `\w+` regex.
+- `compression_vs_source = 1 - cand_tokens / source_tokens`
+- `length_ratio_vs_ref = cand_tokens / ref_tokens`
 
 # 4. Data
 
-## 4.1 Dataset
+In-repo fixture `tests/fixtures/billsum_mini.jsonl`: 6 hand-picked
+Congressional bills with:
 
-We use a small but realistic dataset chosen to make the suite reproducible
-on a laptop. For production runs, swap in the corresponding full-scale
-public corpus as documented in the README.
+- 4 clean candidates: faithful paraphrased summaries
+- 2 intentionally bad candidates: off-topic for the strip plot
 
-## 4.2 Pre-Processing
-
-Pre-processing follows the published protocol for the relevant benchmark
-where one exists. Custom additions (chunking, normalization, deduplication)
-are documented in the code and reproducible from the Makefile.
-
-## 4.3 Splits
-
-The train/dev/test split is fixed by seed for reproducibility. The exact
-split is recorded in `results/` so that re-runs are bit-comparable.
+The clean ones are short (1-2 sentences) and substantive; the bad
+ones are short but wrong (e.g., for a bill about EV chargers, a
+"summary" about EV adoption in general).
 
 # 5. Evaluation Setup
 
-## 5.1 Metrics
-
-The metric set is chosen to surface different failure modes of the system,
-not just one headline number. Detailed metric definitions are in the
-section-relevant references.
-
-## 5.2 Baselines
-
-We compare against the published baselines that are most directly comparable,
-and against a trivial baseline (random / majority class) to establish a floor.
-
-## 5.3 Hardware
-
-All results in this report were produced on a CPU-only MacBook M-series.
-GPU runs would be faster but should not change the rank order of the
-methods compared here.
+Standard run: all cheap metrics on all 6 samples. Optional
+BERTScore (loads DistilBERT, ~5 minutes first run on CPU).
+Hardware: Apple M-series CPU.
 
 # 6. Results
 
-## 6.1 Headline Numbers
+| metric                |  mean | what it says                                       |
+|-----------------------|------:|----------------------------------------------------|
+| rouge1_f              | 0.504 | half the candidate vocabulary matches the ref      |
+| rouge2_f              | 0.299 | bigram overlap lower; expected for paraphrased     |
+| rougeL_f              | 0.437 | longest-common-subsequence holds up                |
+| factscore_p           | 0.833 | 5 of 6 summaries are mostly grounded               |
+| compression_vs_source | 0.574 | summaries are ~43% of source length                |
+| length_ratio_vs_ref   | 1.000 | candidates match the reference length almost exactly |
+| cand_tokens           | 32.5  |                                                    |
+| ref_tokens            | 32.7  |                                                    |
 
-The headline numbers are in the README table. The figures below break those
-numbers down across the axes that matter most for this task.
+Honest observations:
 
-![Primary chart](../../results/figures/primary.png){width=80%}
+1. **factscore_p = 0.833 is misleading.** The mean hides the two
+   outright bad candidates (sids `b3` and `b6`). The strip plot
+   surfaces them; the mean alone never would.
+2. **Length ratio is suspiciously perfect (1.000).** Artifact of the
+   small fixture: the bad candidates happen to be short, which
+   balances the verbose clean ones. Real BillSum has much more
+   length variance.
+3. **ROUGE-L > ROUGE-2 > 0** says the candidates share long
+   subsequences (good for paraphrased summaries). A wholesale-copy
+   summarizer would have ROUGE-2 close to ROUGE-1; this gap is healthy.
 
-## 6.2 Per-Slice Analysis
-
-Beyond the headline, we report per-category, per-difficulty, and per-input-
-type breakdowns. The per-slice charts make it visible which inputs the
-system handles well and which it fails on.
-
-![Secondary chart](../../results/figures/secondary.png){width=80%}
+The bottom-line claim: ROUGE alone would have called this a 0.504
+result and moved on. The combined metric set tells you 4 of 6 are
+good, 2 are broken, and points you straight at which to look at.
 
 # 7. Ablations
 
-We ran small ablations on the most-impactful hyperparameters. The full
-sweeps are reproducible from the Makefile; the headline result of each
-ablation is summarized here.
-
-## 7.1 Ablation 1
-
-The first ablation varies the most-tuned hyperparameter across its
-recommended range. The result shows the expected monotonic behavior.
-
-## 7.2 Ablation 2
-
-A second ablation varies the input-side preprocessing to verify the
-sensitivity claim.
+The 0.3 sentence-coverage threshold for FActScore-heuristic was tuned
+on the fixture (sweeps at 0.1, 0.2, 0.3, 0.4 showed the threshold
+balanced over- and under-flagging at 0.3). Production should
+re-tune per corpus.
 
 # 8. Discussion
 
-Three things worth being explicit about:
-
-1. **Result interpretation.** What the numbers mean in practice (not just
-   what they are).
-2. **Surprising findings.** Where the data contradicted our prior.
-3. **What to do next.** The set of next experiments motivated by these
-   results.
+The combination of metrics is more informative than any one. Length
++ FActScore + ROUGE is the cheapest defensible set; adding BERTScore
+adds semantic-overlap signal at modest cost. The next step is the
+LLM-decomposed atomic FActScore from Min et al. (2023), which catches
+paraphrased hallucinations that the heuristic sentence-overlap
+proxy misses.
 
 # 9. Limitations
 
-A complete limitations list:
-
-1. Dataset scale: the in-CI run uses a small fixture; production behavior
-   may differ.
-2. Hardware: results were collected CPU-only; GPU runs may produce different
-   absolute numbers (rank order should be stable).
-3. Baselines: we compared against the most directly comparable published
-   methods, not against every method in the literature.
+1. **Heuristic FActScore.** Sentence-level token overlap; misses
+   paraphrased hallucinations.
+2. **ROUGE-L is sentence-level by default.** Paragraph-level summaries
+   want the summary-level variant.
+3. **BERTScore is unscaled.** No `rescale_with_baseline=True`;
+   absolute numbers are higher than the rescaled-paper version but
+   rankings are unchanged.
+4. **Small fixture.** 6 bills; real BillSum has thousands.
 
 # 10. Future Work
 
-- [ ] Scale up to the full public dataset.
-- [ ] Add the GPU code path and report wall-clock and tokens/sec.
-- [ ] Run statistical-significance tests on the per-slice deltas.
-- [ ] Compare against one more recent baseline.
+- [ ] LLM-decomposed atomic-fact FActScore.
+- [ ] Multi-candidate-per-bill mode for inter-summarizer comparison.
+- [ ] Coverage-of-named-sections metric.
+- [ ] Citation-precision metric when summaries include section
+      pointers.
 
 # 11. References
 
-See the project's `CITATION.cff` and README for the full bibliography. The
-core references for this project are:
+- Kornilova, A., & Eidelman, V. (2019). *BillSum: A Corpus for
+  Automatic Summarization of US Legislation.* EMNLP Workshop on
+  New Frontiers in Summarization.
+- Lin, C.-Y. (2004). *ROUGE: A Package for Automatic Evaluation
+  of Summaries.* ACL.
+- Min, S., et al. (2023). *FActScore: Fine-grained Atomic
+  Evaluation of Factual Precision in Long Form Text Generation.*
+  EMNLP.
+- Zhang, T., et al. (2020). *BERTScore: Evaluating Text Generation
+  with BERT.* ICLR.
 
-1. The seminal paper for the technique.
-2. The benchmark or dataset paper.
-3. A recent survey of the area.
+# Appendix A. Reproducibility
 
-# Appendix A. Reproducibility Checklist
-
-- [x] All code is open source under MIT.
-- [x] All hyperparameters are recorded in `pyproject.toml` defaults + CLI.
-- [x] All random seeds are fixed in the runner.
-- [x] All datasets are downloaded from a public source.
-- [x] Test artifacts are captured in `docs/test_results/`.
+- Repo: `Akshitha024/legal-summarization-benchmark`, MIT.
+- Reproduce: `make eval && make plots`.
+- 5 figures in `results/figures/`.
+- Test artifacts in `docs/test_results/`.
