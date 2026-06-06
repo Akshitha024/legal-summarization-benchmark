@@ -1,0 +1,22 @@
+.........                                                                [100%]
+================================ tests coverage ================================
+______________ coverage: platform darwin, python 3.11.14-final-0 _______________
+
+Name                              Stmts   Miss  Cover
+-----------------------------------------------------
+src/lse/__init__.py                   1      0   100%
+src/lse/cli/__init__.py               0      0   100%
+src/lse/cli/main.py                  30     30     0%
+src/lse/data/__init__.py              0      0   100%
+src/lse/metrics/__init__.py           0      0   100%
+src/lse/metrics/bert_scorer.py       13     13     0%
+src/lse/metrics/factscore.py         33      3    91%
+src/lse/metrics/length.py            10      0   100%
+src/lse/metrics/rouge_scorer.py      11      6    45%
+src/lse/models/__init__.py            0      0   100%
+src/lse/runner.py                    57     36    37%
+src/lse/types.py                     15      0   100%
+src/lse/viz/__init__.py               0      0   100%
+src/lse/viz/charts.py               140    140     0%
+-----------------------------------------------------
+TOTAL                               310    228    26%
