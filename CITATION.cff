@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+title: lse — Legal summarization evaluator
+authors:
+  - family-names: Lingampally
+    given-names: Akshitha Reddy
+type: software
+date-released: 2025-02-18
+repository-code: https://github.com/Akshitha024/legal-summarization-eval
+license: MIT
+references:
+  - type: article
+    title: "BillSum: A Corpus for Automatic Summarization of US Legislation"
+    authors: [{family-names: Kornilova, given-names: Anastassia}]
+    year: 2019
+    url: https://arxiv.org/abs/1910.00523
+  - type: article
+    title: "ROUGE: A Package for Automatic Evaluation of Summaries"
+    authors: [{family-names: Lin, given-names: Chin-Yew}]
+    year: 2004
+  - type: article
+    title: "BERTScore: Evaluating Text Generation with BERT"
+    authors: [{family-names: Zhang, given-names: Tianyi}]
+    year: 2020
+    url: https://arxiv.org/abs/1904.09675
+  - type: article
+    title: "FActScore: Fine-grained Atomic Evaluation of Factual Precision"
+    authors: [{family-names: Min, given-names: Sewon}]
+    year: 2023
+    url: https://arxiv.org/abs/2305.14251
