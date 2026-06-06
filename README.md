@@ -123,7 +123,7 @@ flowchart LR
     R2 --> D
     R3 --> D
     R4 --> D
-    D --> E[results/RUN__scores.jsonl + summary.json]
+    D --> E["results/RUN__scores.jsonl + summary.json"]
     E --> F[viz.charts]
     F --> G[5 figures]
 ```
