@@ -1,0 +1,17 @@
+{
+  "run_id": "latest",
+  "n": 6,
+  "means": {
+    "cand_tokens": 32.5,
+    "compression_vs_source": 0.5743017399101202,
+    "factscore_p": 0.8333333333333334,
+    "length_ratio_vs_ref": 1.0001491188991187,
+    "n_facts": 1.5,
+    "n_supported": 1.3333333333333333,
+    "ref_tokens": 32.666666666666664,
+    "rouge1_f": 0.5035438951046936,
+    "rouge2_f": 0.29896645972497365,
+    "rougeL_f": 0.4366692593552848,
+    "source_tokens": 76.33333333333333
+  }
+}
